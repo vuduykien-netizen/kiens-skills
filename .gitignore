@@ -1,0 +1,13 @@
+# Dữ liệu nghiên cứu và output runtime không được version control.
+*.sav
+*.zsav
+*.dta
+*.rds
+*.RData
+*.spv
+**/source_pointer.txt
+**/runs_pending/
+**/data_pending/
+**/data_safe/
+**/90_archive/
+**/MANIFEST_LOCAL_ONLY.tsv

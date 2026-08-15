@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tạo bộ số liệu giả"
+  short_description: "Workflow số liệu giả an toàn, có chỉ dẫn bước tiếp"
+  default_prompt: "Use $tao-bo-so-lieu-gia to run the privacy-safe synthetic-data workflow and, after every stage, recommend the immediate action, the following action, and the optimal available model and reasoning effort."
