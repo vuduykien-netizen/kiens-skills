@@ -1,44 +1,44 @@
-# Định tuyến model và reasoning effort
+# Model and reasoning-effort routing
 
-Đề xuất theo model đang thực sự khả dụng tại runtime. Nếu tên model khác bảng dưới đây, ánh xạ theo vai trò `efficient`, `balanced` hoặc `frontier`; khi thông tin hiện hành không chắc chắn, dùng `$openai-docs` để kiểm tra trước khi nêu tên model.
+Base every recommendation on the models that are actually available at runtime. If the model names differ from the table below, map them by role: `efficient`, `balanced` or `frontier`. When current information is uncertain, use `$openai-docs` to check before naming a model.
 
-## Nguyên tắc
+## Principles
 
-- Bắt đầu bằng cấu hình nhỏ nhất có khả năng đạt tiêu chí hoàn tất.
-- Dùng `low` cho tác vụ thường quy, ít mơ hồ và ưu tiên tốc độ.
-- Dùng `medium` làm mức cân bằng mặc định cho viết script và xử lý nhiều bước.
-- Chỉ tăng `high` hoặc `xhigh` khi độ phức tạp, rủi ro riêng tư hoặc kiểm định thực tế cho thấy có lợi.
-- Chỉ đề xuất `max` cho trường hợp khó nhất, ưu tiên chất lượng, có tiêu chí đánh giá rõ; so sánh với `xhigh` trước.
-- Chỉ đề xuất Pro mode cho audit khó, giá trị cao khi lợi ích chất lượng dự kiến đáng với độ trễ/chi phí; không dùng cho công việc thường quy.
+- Start with the smallest configuration that can meet the completion criteria.
+- Use `low` for routine, unambiguous tasks where speed matters.
+- Use `medium` as the balanced default for writing scripts and multi-step work.
+- Raise to `high` or `xhigh` only when complexity, privacy risk or real-world validation shows a benefit.
+- Recommend `max` only for the hardest cases where quality is the priority and there are clear evaluation criteria; compare it with `xhigh` first.
+- Recommend Pro mode only for hard, high-value audits where the expected quality gain justifies the latency and cost; never for routine work.
 
-## Ánh xạ ưu tiên khi GPT-5.6 khả dụng
+## Preferred mapping when GPT-5.6 is available
 
-| Vai trò | Model | Baseline effort | Dùng cho |
+| Role | Model | Baseline effort | Use for |
 |---|---|---|---|
-| `efficient` | `gpt-5.6-luna` | `low` | Thu thập tham số, cập nhật trạng thái, hướng dẫn chạy đơn giản |
-| `balanced` | `gpt-5.6-terra` | `medium` | Viết script chuẩn, sinh `schema_only`, manifest và kiểm tra thường quy |
-| `frontier` | `gpt-5.6-sol` | `high` | Riêng tư, debug phức tạp, ràng buộc nhiều biến và audit cuối |
+| `efficient` | `gpt-5.6-luna` | `low` | Collecting parameters, updating status, simple run instructions |
+| `balanced` | `gpt-5.6-terra` | `medium` | Writing standard scripts, `schema_only` generation, manifests and routine checks |
+| `frontier` | `gpt-5.6-sol` | `high` | Privacy work, complex debugging, multi-variable constraints and the final audit |
 
-## Mặc định theo giai đoạn
+## Defaults by stage
 
-| Giai đoạn | Đề xuất mặc định | Tăng cấu hình khi |
+| Stage | Default recommendation | Raise the configuration when |
 |---|---|---|
-| Cổng 1 — xác định nguồn/cấu hình | `efficient / low` | Nguồn, phạm vi hoặc ranh giới riêng tư mơ hồ: `balanced / medium` |
-| Cổng 2 — viết script metadata | `balanced / medium` | Cú pháp đa phiên bản, schema phức tạp hoặc lỗi khó tái hiện: `frontier / high` |
-| Cổng 2 — duyệt an toàn metadata | `frontier / high` | Quần thể nhỏ/bệnh hiếm, nhiều bán định danh hoặc `local_fit`: `frontier / xhigh` |
-| Cổng 3 — sinh `schema_only` | `balanced / medium` | Nhiều nhánh, cụm, thời gian hoặc biến dẫn xuất: `frontier / high` |
-| Cổng 3 — kiểm định riêng tư | `frontier / high` | `local_fit`, near-duplicate hoặc tổ hợp hiếm khó đánh giá: `frontier / xhigh` |
-| Bàn giao — manifest/checksum | `balanced / medium` | Audit nhiều tệp hoặc lỗi không nhất quán: `frontier / high` |
-| Audit cuối chất lượng cao | `frontier / high` | Chỉ cân nhắc `xhigh`/`max` hoặc Pro mode khi tiêu chí đánh giá và giá trị gia tăng rõ ràng |
+| Gate 1 — identify source and configuration | `efficient / low` | The source, scope or privacy boundary is ambiguous: `balanced / medium` |
+| Gate 2 — write the metadata script | `balanced / medium` | Multi-version syntax, a complex schema or a hard-to-reproduce error: `frontier / high` |
+| Gate 2 — metadata safety review | `frontier / high` | Small population or rare disease, many quasi-identifiers, or `local_fit`: `frontier / xhigh` |
+| Gate 3 — generate `schema_only` | `balanced / medium` | Many branches, clusters, time structure or derived variables: `frontier / high` |
+| Gate 3 — privacy validation | `frontier / high` | `local_fit`, near-duplicates or rare combinations that are hard to assess: `frontier / xhigh` |
+| Handoff — manifest and checksums | `balanced / medium` | Auditing many files or inconsistent errors: `frontier / high` |
+| High-quality final audit | `frontier / high` | Consider `xhigh`, `max` or Pro mode only when the evaluation criteria and the added value are clear |
 
-## Mẫu trả lời sau mỗi giai đoạn
+## Reply template after every stage
 
 ```text
-Gợi ý bước tiếp theo
-- Trạng thái hiện tại: <PASS|PENDING|FAIL và lý do>
-- Việc làm ngay: <một hành động cụ thể>
-- Cách làm và dấu hiệu hoàn tất: <hướng dẫn ngắn + điều kiện dừng>
-- Bước kế tiếp sau đó: <xem trước một bước>
-- Model / effort đề xuất: <vai trò; tên model khả dụng; effort>
-- Điều kiện điều chỉnh: <khi nào tăng/hạ cấu hình>
+Next-step recommendation
+- Current status: <PASS|PENDING|FAIL and why>
+- Immediate action: <one concrete action>
+- How to do it and the sign it is finished: <short instructions + stopping condition>
+- Following step: <a preview of the next step>
+- Suggested model / effort: <role; available model name; effort>
+- Adjustment conditions: <when to raise or lower the configuration>
 ```

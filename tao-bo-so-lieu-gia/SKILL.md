@@ -1,176 +1,176 @@
 ---
 name: tao-bo-so-lieu-gia
-description: Master skill tái sử dụng để điều phối quy trình ba cổng tạo bộ số liệu giả an toàn từ cấu trúc dữ liệu SPSS, Stata hoặc R mà không đưa bản ghi thật lên AI; quản lý tham số runtime, thư mục theo giai đoạn, trạng thái pending/reviewed/safe, archive, manifest và gói bàn giao. Dùng cho nhiều bộ số liệu và project root khác nhau khi cần trích xuất metadata local, sinh dữ liệu tổng hợp để phát triển/kiểm thử code, kiểm tra riêng tư hoặc chuẩn bị gói chia sẻ tái lập.
+description: Reusable master skill that orchestrates a three-gate workflow for creating a safe synthetic dataset from the structure of an SPSS, Stata or R dataset, without ever sending real records to an AI. It manages runtime parameters, stage-based folders, pending/reviewed/safe status, archives, manifests and the handoff package. Use it across different datasets and project roots when you need to extract metadata locally, generate synthetic data for developing and testing code, run privacy checks, or prepare a reproducible shareable package.
 ---
 
-# Tạo bộ số liệu giả
+# Synthetic Dataset Builder
 
-Vận hành như một master skill độc lập với từng dự án. Thực hiện đúng ba cổng và bước bàn giao. Xem dữ liệu gốc là `LOCAL_ONLY`: không mở, đọc, tải lên, sao chép hoặc yêu cầu người dùng dán bản ghi thật vào môi trường AI.
+Operate as a master skill that is independent of any single project. Follow the three gates and the handoff step exactly. Treat the original data as `LOCAL_ONLY`: never open, read, upload or copy it, and never ask the user to paste real records into the AI environment.
 
-## Ranh giới master skill và cấu hình dự án
+## Master skill boundary and project configuration
 
-Không ghi vào thư mục skill bất kỳ giá trị runtime nào: đường dẫn nguồn, tên file nguồn, project root, tên người dùng, ổ đĩa, metadata, seed, cỡ mẫu, mã missing, timestamp hoặc đầu ra của một dự án. Chỉ giữ hướng dẫn, placeholder, tài liệu tham chiếu và script nhận tham số.
+Never write any runtime value into the skill folder: source paths, source file names, project root, user names, drive letters, metadata, seeds, sample sizes, missing-value codes, timestamps or the outputs of a project. Keep only instructions, placeholders, reference documents and scripts that take parameters.
 
-Khi bắt đầu một dự án mới, đọc `references/runtime-parameters.md` và thu thập tối thiểu:
+When starting a new project, read `references/runtime-parameters.md` and collect at least:
 
-- `source_software` và `source_format`;
-- `source_path` chỉ để dùng local;
-- `project_root` do người dùng chọn;
-- `synthetic_n` do người dùng xác nhận trước Cổng 3;
-- `seed`, `special_missing_codes`, `small_cell_threshold`, `synthesis_mode` và `output_format` khi cần.
+- `source_software` and `source_format`;
+- `source_path`, for local use only;
+- `project_root`, chosen by the user;
+- `synthetic_n`, confirmed by the user before Gate 3;
+- `seed`, `special_missing_codes`, `small_cell_threshold`, `synthesis_mode` and `output_format` when needed.
 
-Hỏi trực tiếp: **“Bạn muốn tạo bộ số liệu giả có bao nhiêu dòng (bao nhiêu đối tượng)?”** Ghi câu trả lời là `synthetic_n` khi đó là số nguyên dương. Không suy đoán từ số dòng dữ liệu gốc, không tái sử dụng giá trị từ dự án/cuộc hội thoại trước và không tự đặt mặc định thay người dùng. Nếu chưa có câu trả lời, ghi `synthetic_n: pending`, nhắc lại trước Cổng 3 và không bắt đầu sinh dữ liệu giả. Nếu thiếu tham số khác ảnh hưởng đến code, hỏi ngắn gọn; không yêu cầu bản ghi mẫu. Ghi cấu hình từng dự án trong project root, tuyệt đối không ghi ngược vào thư mục master skill.
+Ask directly: **"How many rows (how many subjects) should the synthetic dataset have?"** Record the answer as `synthetic_n` only if it is a positive integer. Do not infer it from the number of rows in the original data, do not reuse a value from a previous project or conversation, and do not set a default on the user's behalf. If there is no answer yet, record `synthetic_n: pending`, remind the user before Gate 3, and do not start generating synthetic data. If another parameter that affects the code is missing, ask briefly; never ask for sample records. Store each project's configuration inside its project root and never write it back into the master skill folder.
 
-Mọi đường dẫn trong tài liệu và script master phải là đường dẫn tương đối hoặc placeholder như `<project-root>` và `<source-path>`. Script tiện ích phải nhận project root qua tham số bắt buộc, không tự suy đoán thư mục làm việc hiện hành.
+Every path in the master documentation and scripts must be relative or a placeholder such as `<project-root>` and `<source-path>`. Utility scripts must receive the project root through a required parameter and must not guess the current working directory.
 
-## Quản lý thư mục dự án
+## Project folder management
 
-Sau khi nhận `project_root` ở runtime, đọc `references/project-layout.md` và tạo cấu trúc chuẩn bên dưới đó trước khi sinh đầu ra. Nếu project root đã có nội dung, lập danh mục và ánh xạ di chuyển trước; không tự động ghi đè hoặc xóa.
+After receiving `project_root` at runtime, read `references/project-layout.md` and create the standard structure beneath it before generating any output. If the project root already has content, build an inventory and a move map first; never overwrite or delete automatically.
 
-Quản lý file theo luồng:
+Manage files along this flow:
 
 ```text
 pending -> reviewed/safe -> handoff
               |
-              +-> archive khi bị thay thế
+              +-> archive when superseded
 ```
 
-Quy tắc bắt buộc:
+Mandatory rules:
 
-- Không đặt dữ liệu thật trong project root; `01_gate1_source/source_pointer.txt` chỉ là tệp runtime `LOCAL_ONLY`, không phải thành phần của master skill hoặc gói chia sẻ.
-- Mỗi lần chạy tạo thư mục timestamp mới, không ghi đè.
-- Chỉ chuyển metadata đạt `SAFE_METADATA / allow` vào `02_gate2_metadata/reviewed`.
-- File giả vừa sinh phải ở `03_gate3_synthetic/data_pending`.
-- Chỉ chuyển file đạt `SYNTHETIC_SAFE / allow` vào `03_gate3_synthetic/data_safe`.
-- Chuyển lần chạy cũ hoặc file bị thay thế vào `90_archive`; archive không thuộc gói chia sẻ.
-- Cập nhật `00_project_control/PROJECT_STATUS.md` sau mỗi cổng.
-- Tìm và sửa đường dẫn hard-code trước khi di chuyển file.
-- Trên Windows, xác minh đường dẫn tuyệt đối nằm trong project root rồi dùng PowerShell `-LiteralPath`; không xóa đệ quy bằng đường dẫn chưa kiểm tra.
+- Never place real data in the project root. `01_gate1_source/source_pointer.txt` is only a `LOCAL_ONLY` runtime file and is not part of the master skill or the shareable package.
+- Every run creates a new timestamped folder; nothing is overwritten.
+- Move only metadata rated `SAFE_METADATA / allow` into `02_gate2_metadata/reviewed`.
+- Freshly generated synthetic files stay in `03_gate3_synthetic/data_pending`.
+- Move only files rated `SYNTHETIC_SAFE / allow` into `03_gate3_synthetic/data_safe`.
+- Move old runs and superseded files into `90_archive`; the archive is not part of the shareable package.
+- Update `00_project_control/PROJECT_STATUS.md` after every gate.
+- Find and fix hard-coded paths before moving files.
+- On Windows, verify that the absolute path lies inside the project root and then use PowerShell `-LiteralPath`; never delete recursively with an unchecked path.
 
-## Gợi ý chuyển bước bắt buộc
+## Mandatory next-step recommendation
 
-Sau mỗi giai đoạn, kể cả khi `PASS`, `PENDING`, `FAIL` hoặc bị chặn, cập nhật `00_project_control/PROJECT_STATUS.md` và trả cho người dùng một khối **Gợi ý bước tiếp theo** gồm:
+After every stage, including when the result is `PASS`, `PENDING`, `FAIL` or blocked, update `00_project_control/PROJECT_STATUS.md` and give the user a **Next-step recommendation** block containing:
 
-- trạng thái hiện tại và điều kiện còn thiếu;
-- việc cần làm ngay, cách làm ngắn gọn và dấu hiệu hoàn tất;
-- bước sẽ làm sau khi việc trước mắt hoàn tất để người dùng thấy trước lộ trình;
-- model và reasoning effort đề xuất, kèm điều kiện cần nâng hoặc hạ mức.
+- the current status and any missing conditions;
+- the immediate action, a short how-to, and the sign that it is finished;
+- the step that follows once the immediate action is done, so the user can see the road ahead;
+- the suggested model and reasoning effort, with the conditions for raising or lowering them.
 
-Đọc `references/model-effort-routing.md` trước khi đề xuất. Kiểm tra model thực sự khả dụng tại runtime; không khẳng định một tên model là tối ưu vĩnh viễn. Ưu tiên cấu hình nhỏ nhất vẫn đạt yêu cầu an toàn và chất lượng, rồi tăng model/effort khi độ phức tạp, rủi ro riêng tư hoặc yêu cầu kiểm định tăng. Khuyến nghị chỉ là gợi ý vận hành, không tự ý đổi model hay phát sinh chi phí thay người dùng.
+Read `references/model-effort-routing.md` before making a recommendation. Check which models are actually available at runtime; never claim that a particular model name is permanently optimal. Prefer the smallest configuration that still meets the safety and quality requirements, and raise the model or effort as complexity, privacy risk or validation requirements grow. The recommendation is operational guidance only: never change the model or incur cost on the user's behalf.
 
-## 1. Xác định loại số liệu gốc
+## 1. Identify the type of the original dataset
 
-Hỏi trước một câu ngắn: **“Bộ số liệu gốc được lưu ở SPSS, Stata hay R?”**
+First ask one short question: **"Is the original dataset stored in SPSS, Stata or R?"**
 
-Sau khi có câu trả lời, xác nhận định dạng dự kiến:
+Once you have the answer, confirm the expected format:
 
-- SPSS: `.sav` và script `.sps`.
-- Stata: `.dta` và script `.do`.
-- R: `.rds`, `.RData` hoặc định dạng được đọc bằng R, với script `.R`.
+- SPSS: `.sav` plus `.sps` scripts.
+- Stata: `.dta` plus `.do` scripts.
+- R: `.rds`, `.RData` or any format readable by R, with `.R` scripts.
 
-Sau khi biết phần mềm/định dạng, hỏi đường dẫn local, mã missing đặc biệt khi có, và luôn hỏi: **“Bạn muốn tạo bộ số liệu giả có bao nhiêu dòng (bao nhiêu đối tượng)?”** Không thay câu trả lời bằng cỡ mẫu dữ liệu gốc hoặc một giá trị mặc định. Có thể để `synthetic_n: pending` khi chuyển sang trích xuất metadata, nhưng phải hỏi lại trước khi sinh. Không yêu cầu file thật, ảnh Data Editor, bản ghi mẫu, ID hoặc văn bản tự do.
+After the software and format are known, ask for the local path and any special missing-value codes, and always ask: **"How many rows (how many subjects) should the synthetic dataset have?"** Do not substitute the sample size of the original data or a default value for the answer. You may leave `synthetic_n: pending` while moving on to metadata extraction, but you must ask again before generating. Never ask for the real file, Data Editor screenshots, sample records, IDs or free text.
 
-Ghi cấu hình không nhạy cảm của lần chạy vào `01_gate1_source/project_config.yaml`; ghi đường dẫn nguồn vào `source_pointer.txt` với nhãn `LOCAL_ONLY`. Hai tệp này thuộc dự án đang chạy, không thuộc master skill. Không tính checksum và không sao chép file nguồn.
+Write the non-sensitive run configuration to `01_gate1_source/project_config.yaml`, and write the source path to `source_pointer.txt` with the `LOCAL_ONLY` label. These two files belong to the running project, not to the master skill. Do not compute checksums and do not copy the source file.
 
-**Cổng 1:** chỉ chuyển tiếp khi đã biết phần mềm/định dạng, đã hỏi cỡ mẫu giả và người dùng hiểu rằng file thật phải ở lại local. Có thể tiếp tục Cổng 2 khi `synthetic_n` còn `pending`, nhưng Cổng 3 bị chặn cho đến khi người dùng xác nhận số nguyên dương.
+**Gate 1:** move on only when the software and format are known, the synthetic sample size has been asked, and the user understands that the real file stays local. Gate 2 may proceed while `synthetic_n` is still `pending`, but Gate 3 is blocked until the user confirms a positive integer.
 
-Phát hành khối **Gợi ý bước tiếp theo** cho việc tạo/chạy script metadata và xem trước bước duyệt an toàn metadata.
+Issue a **Next-step recommendation** block for creating and running the metadata script and for previewing the metadata safety review.
 
-## 2. Viết code lấy biến và mô hình dữ liệu
+## 2. Write the code that extracts variables and the data model
 
-Áp dụng `$trich-xuat-cau-truc-du-lieu-local` để tạo script chỉ đọc trong `02_gate2_metadata/scripts`. Script phải:
+Apply `$trich-xuat-cau-truc-du-lieu-local` to create a read-only script in `02_gate2_metadata/scripts`. The script must:
 
-1. Không ghi đè dữ liệu nguồn và không xuất bất kỳ dòng dữ liệu nào.
-2. Lấy tên biến, nhãn không nhạy cảm, kiểu, format, số quan sát, số/tỷ lệ missing và phạm vi đã làm thô.
-3. Với biến phân loại, chỉ xuất mã và tần số đã gộp; mặc định che nhóm có `n < 10`.
-4. Chỉ đánh dấu sự tồn tại của ID, ngày chi tiết, địa chỉ, tọa độ và văn bản tự do; không xuất giá trị.
-5. Mô tả phân phối biên, quan hệ phụ thuộc, biến dẫn xuất, nhánh bảng hỏi, quan hệ thời gian/cụm và quy tắc missing.
-6. Nếu cần ước lượng từ dữ liệu thật, thực hiện khớp mô hình và sinh dữ liệu trong cùng quy trình local; không xuất tham số hiếm có thể suy ngược cá thể.
-7. Ghi mỗi lần chạy vào `02_gate2_metadata/runs_pending/<timestamp>` với metadata, đặc tả và log tự kiểm tra.
+1. Never overwrite the source data and never output any data row.
+2. Capture variable names, non-sensitive labels, types, formats, observation counts, missing counts and proportions, and coarsened ranges.
+3. For categorical variables, output only codes and pooled frequencies; by default mask any group with `n < 10`.
+4. Only flag the existence of IDs, detailed dates, addresses, coordinates and free text; never output their values.
+5. Describe marginal distributions, dependency relationships, derived variables, questionnaire branching, time and cluster relationships, and missing-data rules.
+6. If estimation from the real data is needed, fit the model and generate the data within the same local workflow; never export rare parameters from which an individual could be inferred.
+7. Record each run in `02_gate2_metadata/runs_pending/<timestamp>` with the metadata, the specification and a self-check log.
 
-Với script SPSS, ưu tiên bỏ tùy chọn `WINDOW` khỏi `DATASET NAME`; nếu cần chỉ định thì dùng `WINDOW=ASIS`. Không dùng `WINDOW=HIDDEN`: SPSS 27 dừng lệnh vì chỉ chấp nhận `FRONT` hoặc `ASIS`. Trước khi bàn giao `.sps`, tìm chuỗi `WINDOW=HIDDEN`; nếu còn thì coi kiểm tra tương thích là `FAIL` và sửa trước khi người dùng chạy.
+For SPSS scripts, prefer omitting the `WINDOW` option from `DATASET NAME`; if it must be specified, use `WINDOW=ASIS`. Never use `WINDOW=HIDDEN`: SPSS 27 stops the command because it accepts only `FRONT` or `ASIS`. Before handing over an `.sps` file, search for the string `WINDOW=HIDDEN`; if it is still there, treat the compatibility check as `FAIL` and fix it before the user runs the script.
 
-Dùng chế độ an toàn nhất đủ cho mục tiêu:
+Use the safest mode that is sufficient for the goal:
 
-- `schema_only`: mặc định; mô phỏng từ kiểu, miền và quy tắc.
-- `approved_aggregates`: chỉ dùng số tổng hợp đã được phê duyệt.
-- `local_fit`: chỉ khi thật sự cần giữ quan hệ phức tạp; học mô hình và sinh dữ liệu đều chạy local.
+- `schema_only`: the default; simulate from types, domains and rules.
+- `approved_aggregates`: use only aggregate figures that have been approved.
+- `local_fit`: only when complex relationships genuinely need to be preserved; both model learning and data generation run locally.
 
-Áp dụng `$kiem-tra-an-toan-du-lieu`. Khi đạt, chuyển nguyên thư mục chạy vào `02_gate2_metadata/reviewed`; nếu đã có bản hiện hành, chuyển bản cũ vào `90_archive/metadata_runs` trước.
+Apply `$kiem-tra-an-toan-du-lieu`. When the review passes, move the entire run folder into `02_gate2_metadata/reviewed`; if a current version already exists, first move the old one to `90_archive/metadata_runs`.
 
-**Cổng 2:** không chuyển metadata sang AI nếu có ID, dòng dữ liệu, chuỗi tự do, ngày/địa chỉ chi tiết, danh sách giá trị duy nhất hoặc tổ hợp hiếm chưa gộp.
+**Gate 2:** do not pass metadata to an AI if it contains IDs, data rows, free-text strings, detailed dates or addresses, lists of unique values, or rare combinations that have not been pooled.
 
-Phát hành khối **Gợi ý bước tiếp theo** cho việc đặc tả/sinh dữ liệu giả và xem trước các kiểm tra Cổng 3.
+Issue a **Next-step recommendation** block for specifying and generating the synthetic data and for previewing the Gate 3 checks.
 
-## 3. Tạo và kiểm tra bộ số liệu giả
+## 3. Generate and validate the synthetic dataset
 
-Chỉ bắt đầu khi `synthetic_n` là số nguyên dương do người dùng xác nhận trong `project_config.yaml`. Nếu còn `pending`, hỏi lại: **“Bạn muốn tạo bộ số liệu giả có bao nhiêu dòng (bao nhiêu đối tượng)?”** rồi dừng trước Cổng 3. Áp dụng `$mo-phong-du-lieu-nghien-cuu`. Lưu đặc tả trong `03_gate3_synthetic/specification`, script trong `scripts`, hướng dẫn trong `guides`. Code phải:
+Start only when `synthetic_n` is a positive integer confirmed by the user in `project_config.yaml`. If it is still `pending`, ask again: **"How many rows (how many subjects) should the synthetic dataset have?"** and stop before Gate 3. Apply `$mo-phong-du-lieu-nghien-cuu`. Store the specification in `03_gate3_synthetic/specification`, the scripts in `scripts` and the guides in `guides`. The code must:
 
-1. Dùng seed cố định và tạo ID hoàn toàn giả.
-2. Khớp schema, mã hóa, miền, missing, ràng buộc logic và quan hệ cần thiết để chạy thử phân tích.
-3. Không sao chép bản ghi thật; không tự động chọn `local_fit` chỉ để dữ liệu “giống thật”.
-4. Tạo tình huống biên như missing, nhóm thưa và giá trị giới hạn khi phù hợp.
-5. Gắn nhãn `SYNTHETIC—NOT FOR SCIENTIFIC INFERENCE` trong file, log và báo cáo.
-6. Ghi file mới sinh vào `03_gate3_synthetic/data_pending`; ghi validation vào `03_gate3_synthetic/validation`.
+1. Use a fixed seed and create entirely fake IDs.
+2. Match the schema, coding, domains, missing data, logical constraints and the relationships needed to run a trial analysis.
+3. Never copy real records; never choose `local_fit` automatically just to make the data look "realistic".
+4. Create edge cases such as missing values, sparse groups and boundary values where appropriate.
+5. Label files, logs and reports with `SYNTHETIC—NOT FOR SCIENTIFIC INFERENCE`.
+6. Write newly generated files to `03_gate3_synthetic/data_pending` and write validation output to `03_gate3_synthetic/validation`.
 
-Nếu dùng `local_fit`, yêu cầu chạy local kiểm tra exact/near duplicate, tổ hợp bán định danh duy nhất, nhóm hiếm, cực trị và khoảng cách láng giềng so với dữ liệu thật.
+If `local_fit` is used, require local checks for exact and near duplicates, unique quasi-identifier combinations, rare groups, extreme values and nearest-neighbour distance against the real data.
 
-Áp dụng `$kiem-tra-an-toan-du-lieu`. Khi tất cả kiểm tra đạt `SYNTHETIC_SAFE / allow`, chuyển file từ `data_pending` sang `data_safe`. File fail hoặc bị thay thế chuyển vào `90_archive/synthetic_runs`.
+Apply `$kiem-tra-an-toan-du-lieu`. When every check reaches `SYNTHETIC_SAFE / allow`, move the file from `data_pending` to `data_safe`. Files that fail or are superseded go to `90_archive/synthetic_runs`.
 
-**Cổng 3:** nếu chưa kiểm tra xong, giữ `SYNTHETIC_PENDING` trong `data_pending` và không khuyên tải file lên AI.
+**Gate 3:** if validation is not finished, keep the status `SYNTHETIC_PENDING` in `data_pending` and do not advise uploading the file to an AI.
 
-Phát hành khối **Gợi ý bước tiếp theo** cho việc sửa/kiểm định lại hoặc đóng gói bàn giao, đồng thời xem trước audit cuối.
+Issue a **Next-step recommendation** block for fixing and re-validating or for packaging the handoff, and preview the final audit.
 
-## 4. Đóng gói bàn giao
+## 4. Package the handoff
 
-Chỉ bắt đầu sau Cổng 3. Tạo:
+Start only after Gate 3. Create:
 
 - `00_project_control/RUN_ORDER.md`;
 - `00_project_control/MANIFEST_LOCAL_ONLY.tsv`;
 - `00_project_control/MANIFEST_SHAREABLE.tsv`;
 - `04_handoff/audit/FINAL_AUDIT_REPORT.md`;
-- `04_handoff/checksums/` khi cần tệp checksum riêng;
-- `04_handoff/package/` chỉ chứa bản đóng băng lấy từ manifest SHAREABLE.
+- `04_handoff/checksums/` when separate checksum files are needed;
+- `04_handoff/package/`, containing only the frozen copy taken from the SHAREABLE manifest.
 
-Không đưa `runs_pending`, `data_pending`, `90_archive`, dữ liệu thật hoặc khóa liên kết vào gói chia sẻ.
+Never put `runs_pending`, `data_pending`, `90_archive`, real data or linkage keys into the shareable package.
 
-Dùng các script đi kèm khi cấu trúc đã đầy đủ:
+Use the bundled scripts once the structure is complete:
 
 ```powershell
 & '<skill-dir>\scripts\build-shareable-manifest.ps1' -ProjectRoot '<project-root>'
 & '<skill-dir>\scripts\verify-package.ps1' -ProjectRoot '<project-root>'
 ```
 
-Chỉ kết luận hoàn tất khi checksum khớp, không còn đường dẫn legacy, validation là `PASS`, phân loại là `SYNTHETIC_SAFE / ALLOW`, và không có file dữ liệu thật trong project root.
+Conclude that the handover is complete only when the checksums match, no legacy paths remain, validation is `PASS`, the classification is `SYNTHETIC_SAFE / ALLOW`, and no real data file is present in the project root.
 
-Sau bàn giao, phát hành khối **Gợi ý bước tiếp theo** cho cách chạy lại tái lập, lưu trữ/phiên bản hóa an toàn và bước phân tích kế tiếp phù hợp; luôn nhắc dữ liệu giả không dùng để suy luận khoa học.
+After the handoff, issue a **Next-step recommendation** block covering how to rerun the work reproducibly, safe archiving and versioning, and the next suitable analysis step; always remind the user that synthetic data must not be used for scientific inference.
 
-## Kiểm tra khả năng tái sử dụng của master skill
+## Reusability check for the master skill
 
-Sau khi sửa skill, kiểm tra toàn bộ thư mục skill trước khi chia sẻ:
+After editing the skill, check the entire skill folder before sharing it:
 
-- không có đường dẫn tuyệt đối, tên file nguồn, project root hoặc thông tin người dùng cụ thể;
-- không có metadata, dữ liệu hoặc đầu ra của một dự án;
-- ví dụ chỉ dùng placeholder;
-- script tiện ích yêu cầu tham số đầu vào và không phụ thuộc thư mục làm việc hiện hành;
-- script SPSS không chứa `WINDOW=HIDDEN`; dùng `WINDOW=ASIS` hoặc bỏ tùy chọn `WINDOW`;
-- `agents/openai.yaml` mô tả cách dùng chung;
-- hướng dẫn từng cổng đều dẫn đến khối gợi ý việc làm ngay, bước sau đó, model và effort theo `references/model-effort-routing.md`;
-- skill vượt qua `quick_validate.py` và các script đi kèm được kiểm thử bằng fixture tạm không chứa dữ liệu thật.
+- no absolute paths, source file names, project roots or user-specific information;
+- no metadata, data or outputs from a single project;
+- examples use placeholders only;
+- utility scripts require input parameters and do not depend on the current working directory;
+- SPSS scripts do not contain `WINDOW=HIDDEN`; use `WINDOW=ASIS` or omit the `WINDOW` option;
+- `agents/openai.yaml` describes general usage;
+- the instructions for every gate lead to a recommendation block with the immediate action, the following step, and the model and effort per `references/model-effort-routing.md`;
+- the skill passes `quick_validate.py`, and the bundled scripts have been tested with temporary fixtures that contain no real data.
 
-## Đầu ra bắt buộc
+## Required output
 
-Trả về:
+Return:
 
-- cấu trúc thư mục và trạng thái từng cổng;
-- câu trả lời `synthetic_n` đã xác nhận trước khi sinh dữ liệu giả;
-- script local trích xuất cấu trúc/mô hình;
-- hướng dẫn chạy và rà soát metadata;
-- đặc tả và script sinh dữ liệu giả;
-- file giả trong `data_safe` nếu đã đạt cổng;
-- báo cáo validation và phân loại an toàn;
-- RUN_ORDER, hai manifest, checksum và audit khi bàn giao;
-- khối **Gợi ý bước tiếp theo** sau mỗi giai đoạn, gồm cả bước ngay sau đó, bước kế tiếp nữa, model và reasoning effort đề xuất;
-- cảnh báo dữ liệu giả chỉ phục vụ phát triển/kiểm thử code, không dùng để suy luận khoa học hoặc báo cáo kết quả nghiên cứu.
+- the folder structure and the status of each gate;
+- the confirmed `synthetic_n` answer, obtained before any synthetic data is generated;
+- the local scripts that extract the structure and model;
+- instructions for running and reviewing the metadata;
+- the specification and the script that generates the synthetic data;
+- the synthetic file in `data_safe` if the gate has been passed;
+- the validation report and the safety classification;
+- RUN_ORDER, both manifests, checksums and the audit at handoff;
+- a **Next-step recommendation** block after every stage, including the immediate step, the step after that, and the suggested model and reasoning effort;
+- a warning that synthetic data is only for developing and testing code and must not be used for scientific inference or for reporting research results.
 
-Nếu người dùng chưa chạy được script local, dừng ở code và hướng dẫn; không bịa metadata, tham số hoặc kết quả từ dữ liệu gốc.
+If the user cannot yet run the local scripts, stop at the code and instructions; never invent metadata, parameters or results from the original data.

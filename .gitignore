@@ -1,4 +1,4 @@
-# Dữ liệu nghiên cứu và output runtime không được version control.
+# Research data and runtime outputs must not be version controlled.
 *.sav
 *.zsav
 *.dta

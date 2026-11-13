@@ -1,12 +1,11 @@
-# Kien's SKILL
+# Kien's Skills
 
-Kho kỹ năng Codex cá nhân của Kien.
+A personal collection of reusable Codex skills by Kien.
 
 ## Included skills
 
-- `tao-bo-so-lieu-gia`: quy trình ba cổng để tạo dữ liệu giả an toàn từ metadata SPSS, Stata hoặc R; không đưa bản ghi dữ liệu thật vào AI.
+- `tao-bo-so-lieu-gia` (Synthetic Dataset Builder): a three-gate workflow for creating safe synthetic data from SPSS, Stata or R metadata. Real data records are never given to the AI.
 
 ## Install
 
-Sao chép thư mục skill mong muốn vào thư mục `skills` của Codex. Không đưa dữ liệu nguồn, output pending, archive hoặc thông tin định danh vào repository này.
-
+Copy the skill folder you want into Codex's `skills` directory. Never put source data, pending outputs, archives or identifying information into this repository.

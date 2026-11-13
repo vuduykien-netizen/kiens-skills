@@ -1,6 +1,6 @@
-# Cấu trúc quản lý theo giai đoạn
+# Stage-based folder structure
 
-Tất cả đường dẫn dưới đây tương đối với `<project-root>` được chọn tại runtime. Không ghi project root cụ thể vào master skill.
+All paths below are relative to the `<project-root>` chosen at runtime. Never write a concrete project root into the master skill.
 
 ```text
 project-root/
@@ -35,50 +35,49 @@ project-root/
     └── replaced_files/
 ```
 
-## Trạng thái và quyền chia sẻ
+## Status and sharing permission
 
-| Vị trí | Trạng thái | Chia sẻ |
+| Location | Status | Shareable |
 |---|---|---|
-| Dữ liệu thật ngoài project root | `LOCAL_ONLY` | Không |
-| `02_gate2_metadata/runs_pending` | chưa duyệt | Không |
-| `02_gate2_metadata/reviewed` | `SAFE_METADATA / ALLOW` | Có |
-| `03_gate3_synthetic/data_pending` | `SYNTHETIC_PENDING` | Không |
-| `03_gate3_synthetic/data_safe` | `SYNTHETIC_SAFE / ALLOW` | Có |
-| `90_archive` | local audit | Không |
+| Real data outside the project root | `LOCAL_ONLY` | No |
+| `02_gate2_metadata/runs_pending` | not yet reviewed | No |
+| `02_gate2_metadata/reviewed` | `SAFE_METADATA / ALLOW` | Yes |
+| `03_gate3_synthetic/data_pending` | `SYNTHETIC_PENDING` | No |
+| `03_gate3_synthetic/data_safe` | `SYNTHETIC_SAFE / ALLOW` | Yes |
+| `90_archive` | local audit | No |
 
-## Quy tắc phiên bản
+## Versioning rules
 
-- Đặt tên lần chạy: `run_YYYYMMDD_HHMMSS`.
-- Không ghi đè thư mục lần chạy.
-- Chỉ duy trì một bản hiện hành trong `reviewed` và một bộ hiện hành trong `data_safe`.
-- Trước khi thay thế bản hiện hành, chuyển bản cũ vào archive với nguyên tên và log.
-- Ghi seed trong tên file giả hoặc đặc tả.
+- Name runs `run_YYYYMMDD_HHMMSS`.
+- Never overwrite a run folder.
+- Keep only one current version in `reviewed` and one current set in `data_safe`.
+- Before replacing the current version, move the old one to the archive with its original name and log.
+- Record the seed in the synthetic file name or in the specification.
 
 ## Manifest
 
-`MANIFEST_SHAREABLE.tsv` gồm:
+`MANIFEST_SHAREABLE.tsv` contains:
 
 ```text
 path    size_bytes    sha256    classification    status
 ```
 
-Không đưa manifest vào chính nó. Không đưa `source_pointer.txt`, pending, archive hoặc dữ liệu thật vào manifest SHAREABLE.
+Do not list the manifest in itself. Do not put `source_pointer.txt`, pending items, the archive or real data in the SHAREABLE manifest.
 
-`MANIFEST_LOCAL_ONLY.tsv` chỉ ghi đường dẫn runtime và lý do giữ local; không đọc dữ liệu thật để tính checksum. Không sao chép manifest này vào thư mục master skill.
+`MANIFEST_LOCAL_ONLY.tsv` records only runtime paths and the reason for keeping them local; never read the real data to compute a checksum. Do not copy this manifest into the master skill folder.
 
-## Trạng thái và gợi ý chuyển bước
+## Status and next-step recommendation
 
-Sau mỗi giai đoạn, cập nhật cuối `00_project_control/PROJECT_STATUS.md` bằng khối:
+After every stage, append this block to the end of `00_project_control/PROJECT_STATUS.md`:
 
 ```text
-GỢI Ý BƯỚC TIẾP THEO
-- Trạng thái hiện tại:
-- Việc làm ngay:
-- Cách làm và dấu hiệu hoàn tất:
-- Bước kế tiếp sau đó:
-- Model / reasoning effort đề xuất:
-- Điều kiện nâng hoặc hạ cấu hình:
+NEXT-STEP RECOMMENDATION
+- Current status:
+- Immediate action:
+- How to do it and the sign it is finished:
+- Following step:
+- Suggested model / reasoning effort:
+- Conditions for raising or lowering the configuration:
 ```
 
-Chỉ ghi khuyến nghị model trong tài liệu kiểm soát dự án; không đưa tên model vào dữ liệu giả, metadata, checksum hoặc tiêu chí phân loại an toàn.
-
+Record model recommendations only in the project control documents; never put model names into synthetic data, metadata, checksums or the safety classification criteria.
